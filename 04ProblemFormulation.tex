@@ -1,0 +1,122 @@
+\chapter {Detailed problem formulation}\label{ch:problemFormulation3D}
+\noindent
+Given a full known world, a mission plan, and a small UAV derive a safe approach to real-time route planning with a small computational footprint compatible with the low computational power available in small UAVs. The main application consists of terrain avoidance for low altitude flights. Following assumption holds:
+\begin{enumerate}
+  \item There is a obstacle database charting all obstacles prior the flight (\ref{ass:1}).
+  \item There is an a-priory global terrain map, which does not change with time (\ref{ass:1}).
+  \item There are no moving obstacles (\ref{ass:3}).
+  \item Estimates of the state of the UAV are available (\ref{ass:4}).
+  \item The operational space does not contain 'traps' such as caves. 'Traps' arise because the field of view of the LiDAR does not include the whole space surrounding the UAV (\ref{ass:5}).
+  \item There is a mission plan for the UAV consisting of waypoints which are reachable with vehicle dynamics (\ref{ass:6}).
+\end{enumerate}
+\noindent
+Following issues need to be addressed in practical implementation:
+\begin{enumerate}
+    \item \textit{Finite time mission execution} - approach must ensure that mission will be executed in finite time.
+    \item \textit{Optimal route} - predicted route is optimal to given cost function and do not deviate from original mission plan.
+    \item \textit{Solution respects vehicle dynamics} - estimated state $\hat{x}$ stays in reachable set of vehicle for prediction time frame $[t_0,t_i]$ and initial state $\hat{x}(t_0)$ is within reachable set $\mathscr{R}(\hat{x}(t_0):t_0,t_i)$
+\end{enumerate}
+\noindent
+The integration of the proposed trajectory control of a UAV flight control framework is described next with reference to Figure \ref{fig:controlConceptIntro}, similar to $\mathscr{FOV}_{2D}$.
+
+\section{Simple plane model}\label{sec:3DsimplisticplaneModel}
+\noindent For avoidance theorem formulation in three dimensional space simplified rigid body kinematic model will be used. This model have decoupled roll, yaw and pitch angles which enables to provide simpler and more clean control (e.g movements can be simplified). 
+
+\begin{equation}\label{eq:simple3dStatevector}
+    \vec{x} = \left [ x_v,y_v,z_v,\alpha_v,\beta_v,\gamma_v \right ]^T
+\end{equation}
+State vector (\ref{eq:simple3dStatevector}) defined as positional state in euclidean position in right-hand euclidean space, where $x_v, y_v,z_v$ states, for latitude, longitude and altitude. Orientation angles for vehicle are $\alpha\beta,\gamma$ for roll, pitch, yaw angle.
+\begin{equation}\label{eq:simple3dInputVector}
+    \vec{u} = \left [ v, \omega_{\alpha_v}, \omega_{\beta_v},\omega_{\gamma_v}\right ]^T
+\end{equation}
+Input vector (\ref{eq:simple3dInputVector}) is defined as frontal velocity of vehicle $v$,orientation change in main axes as angular speed $\omega_{\alpha_v},\omega_{\beta_v},\omega_{\gamma_v}$
+\begin{equation}\label{eq:simple3dvelocityDistribution}
+    \begin{bmatrix}
+    v_x\\
+    v_y\\
+    v_z\
+    \end{bmatrix}
+    = R_{XYZ}(\alpha_v,\beta_v,\gamma_v)
+    \begin{bmatrix}
+    v\\
+    0\\
+    0
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+        f_{v_x}(v,\alpha_v,\beta_v,\gamma_v)\\
+        f_{v_y}(v,\alpha_v,\beta_v,\gamma_v)\\
+        f_{v_z}(v,\alpha_v,\beta_v,\gamma_v)\\
+    \end{bmatrix}
+    =
+    \begin{bmatrix}
+         v\cos(\beta_v)\cos(\gamma_v)\\
+         v\cos(\beta_v)\sin(\gamma_v)\\
+         -v\sin(\beta_v)\\
+    \end{bmatrix}
+\end{equation}
+Velocity distribution function (\ref{eq:simple3dvelocityDistribution}) is is defined trough standard rotation matrix (\ref{eq:xyzspaceRotationMatrix}) and frontal velocity $v$, final distributed velocity is time depending function with values $v_x$, $v_y$, $v_z$ given by functions $f_{v_x}(\dots)$, $f_{v_y}(\dots)$,$f_{v_z}(\dots)$. Final nonlinear model which have been derived from reference model \cite{stevens2015aircraft} is defined by (\ref{eq:simple3ddifferentialequations}).\\
+\begin{equation}\label{eq:simple3ddifferentialequations}
+    \begin{aligned}
+        \dot{x}_v &= v_x  =f_{v_x}(v,\alpha_v,\beta_v,\gamma_v) = v\cos(\beta_v)\cos(\gamma_v)\\
+        \dot{y}_v &= v_y  =f_{v_y}(v,\alpha_v,\beta_v,\gamma_v) = v\cos(\beta_v)\sin(\gamma_v)\\
+        \dot{z}_v &= v_z  =f_{v_z}(v,\alpha_v,\beta_v,\gamma_v) -v\sin(\beta_v)\\
+        \dot{\alpha}_v &= \omega_{\alpha_v}\\
+        \dot{\beta}_v &= \omega_{\beta_v}\\
+        \dot{\gamma}_v &= \omega_{\gamma_v}\\
+    \end{aligned}
+\end{equation}
+
+\newpage\section{Model predictive control}
+\noindent To employ MPC scheme with movement automaton some adjustments needs to be made to original discrete control scheme. These changes are on formal level, because the step time $t_s$ of discrete predictor is similar to fixed movement time $t_i$. So if constraint is satisfied:
+\begin{equation}
+    t_s = t_{i+1}-t_i, \forall i \in B\in\mathscr{MA} 
+\end{equation}
+\noindent MPC problem can be solved as discrete time nonlinear MPC problem with fixed discrete time step $t_s = t_{i+1}-t_i$. When movement chain $m_1(t_1),\dots,m_n(t_n)$.
+In our case movement automaton $\mathscr{MA}$ is used as input control and state space is constrained by obstacle space $\mathscr{O}$. One can define optimal control problem as follow:
+\begin{equation}\label{eq:minProblem}
+    \begin{split}
+        &\text{Minimize } \sum_{k=0}^{N-1} f_0(k,x(k),u(k)) + \Phi(x(T))\\
+        &\text{Subject to: }\\
+        &\textit{Dynamics: } x(k+1) = f(k,x(k),u(k)),\quad
+        k = 0,1,\dots,T-1\\
+        &\textit{Initial conditions: } x(0)= x_0\\
+        &\textit{Control constraints: } u(k)\in\mathscr{MA}_i,\quad k = 0,1,\dots
+        , T-1\\
+        &\textit{State space constraints: } x(k)\in\left\{\mathbb{X}-\mathscr{O}\right\},\quad k = 0,1,\dots
+        , T.
+    \end{split}
+\end{equation}
+\noindent Where $\sum_{k=0}^{N-1} f_0(k,x(k),u(k))$ is dynamic control cost functional, $\Phi(x(T))$ is terminal control cost functional. Dynamics of system is given by $f(k,x(k),u(k))$. Initial conditions $x_0$ are considered for initial prediction time $0$ up to finite prediction horizon $H_T$ at time $T$. Control input at time $k$ is considered as time of movement $m(t_i)$ execution time $t_i$. State $x(k)$ is constrained as $x(k)\notin\mathscr{O}$. for any time $k=0,\dots,T$. This problem is modified problem of dynamic programming with constraints mentioned in section \ref{s:dynap}. All theorems and prepositions from this section holds. 
+
+\subsection{Model predictive control with movement automaton}
+\noindent This section describes method used for predictor in control scheme \ref{fig:controlConceptIntro}. The book \cite{durbin2012time} addresses state space modeling of time series. Time series are long term statistical study method. Methods used in time series can be abused to obtain predictor for movement automaton $\mathscr{MA}$. Predictor uses observed state $x$ and known obstacle set $\mathscr{O}$ to predict future state chain $\hat{x}$ and movement chain $\hat{B}$. Therefore predictor function is given as follows:
+\begin{equation}\label{eq:predictorGlobalForm}
+    f:x\times \mathscr{O}\to \hat{x}\times\hat{B}
+\end{equation}
+\noindent The main advantage of movement automaton $\mathscr{MA}$ control is separability of input $u$ from state $\hat{x}$. Input signal $u(t)$ is generated as interpretation of movement automaton chain $u(t)=\mathscr{I}(m_1(t_1),\dots,m_i(t_i))$. The system is given by discrete time equation:
+\begin{equation}
+    x^+= f(x,\mathscr{I}(m_1(t_1),\dots,m_i(t_i)))
+\end{equation}
+\noindent $\mathscr{I}$ is movement interpretation function. Predictor must therefore satisfy following equation:
+\begin{equation}
+    \hat{m}_i(t_i) =\mathscr{I}^{-1}(\hat{x}(t_i),\mathscr{I}(m_1(t_1),\dots,m_i(t_{i-1})),\quad \hat{x}(0) = x(t_p)
+\end{equation}
+\noindent Where $\mathscr{I}^{-1}$ is inverse movement interpretation functor, $\hat{x}(t_i)$ is expected predicted state at time $t_i$ and $m_1(t_1),\dots,m_i(t_{i-1})$ is previously executed movement chain, which can be partially predicted movement chain. Therefore prediction window or receding horizon is variable. The time series are using application of discrete events in state space models, which have been partially linearized. Therefore standard linear model for discrete time $x^+=f(x,u)$ where $u$ is some discrete event set can be abused as movement predictor function  $\mathscr{I}^{-1}$. Implementation example can be found in section \ref{ch:movementAutomatonPredictor}.
+
+\subsection{Predictor corrections}
+\noindent For this part assume that system operates in infinite time frame $t\in[t_0,\infty)$. The predictor is giving predicted output $\hat{x}(t)$ and predicted input $\hat{u}(t)$ and is given by following equation for system 
+(\ref{eq:simple3ddifferentialequations}):
+\begin{equation}
+    \hat{\dot{x}}(t_d) f_p(\hat{x}(t_d),\hat{u}(t_d),w(t_d),v(t_d))
+\end{equation}
+\noindent where $t_d$ is prediction time. Predicted input function $\hat{u}(t_d)$ is disturbed by input disturbance $v(t_d)$ and state disturbance $w(t_d)$. The difference between predicted state and real state increases with time. Main purpose of control is tracking, therefore the tracking deviation should be employed as marginal error function $e_d$.
+\begin{equation}
+    e_d = \sqrt{\norm{\begin{bmatrix}x_v\\y_v\\z_v\end{bmatrix} -\begin{bmatrix}\hat{x}_v\\\hat{y}_v\\\hat{z}_v\end{bmatrix}}} +\sqrt{\norm{\begin{bmatrix}\beta_v\\\gamma_v\end{bmatrix}-\begin{bmatrix}\hat{\beta}_v\\\hat{\gamma}_v\end{bmatrix}}}
+\end{equation}
+\noindent This error is accumulating prediction $\hat{x}(t_c)$, $\hat{u}(t_c)$ deviation from real input $u(t_c)$ and state vector at time of comparison $t_c$. The marginal error function $e_m$ is in respective notation of system (\ref{eq:simple3ddifferentialequations}). To compare deviation some well established parameter needs to be used. The ideal candidate is safety margin $s_m$, because some partition of safety margin is prediction error, therefore the hard condition for correction is $\frac{1}(12)s_m$. Time of comparison is possible at any execution time $t$, but the correction is possible only at movement automaton switching time when movements $m_{i-1}(t_{i-1}),m_i(t_i)$ are switching. Let us define time of prediction $t_{p1}$ and time of correction $t_{p2}$ with following constraints $t_{p1}\le t_c \le t_{p2}$. then movement chain at time of original prediction $B(t_{p1})=\{m_1^{p1}(t_{1_{p_1}}),\dots, m_\infty^{p1}(t_{t_{p_1}+\infty})\}$ and new chain for time of new prediction $t_{p2}$ to be chained after time of correction $t_c$ given as $B(t_{p2})=\{m_1^{p2}(t_{1_{p_2}}),\dots, m_\infty^{p2}(t_{t_{p_2}+\infty})\}$. Then the final controller input $B$ is given as following equation:
+\begin{equation}
+    B_{\mathscr{MA}} = \bigcup_{p=\{p_1(t_1),\dots,p_N(t_n)\}}^{c=\{t_{c_1},\dots,t_{c_{N-1}}\}} \left\{m_{1,p}(t_{1,p}),\dots,m_{c,p}(t_{c,p}),\dots,m_{k_p,p}(t_{k_p,p})\right\}
+\end{equation}
+\noindent Where $p=\{p_1(t_1),\dots,p_N(t_n)\}$ is chain of predictions $c=\{t_{c_1},\dots,t_{c_{N-1}}\}$ is chain of corrections. The prediction $p_i$ is followed by correction $c_i$ if necessary. Movement chain $m_{1,p}(t_{1,p}),\dots,m_{c,p}(t_{c,p}),\dots,m_{k_p,p}(t_{k_p,p})$ denotes that some movements from previous prediction $p_i$ are executed after correction $c_i$ and then new prediction $p_{i+1}$ is employed. The duration of prediction sequences may differ and its denoted by $k_p$ which marks last executed movement executed from prediction $p$. Movement $m_{c,p}(t_{c,p})$ denotes movement executed from chain $p_i$ at time of correction $c_i$. The goal of predictive control quality is to $\text{lim}_{t\to\infty} k_p = \infty$. This has been achieved in simulation. Unfortunately no disturbances were present to employ this approach. Moving receding horizon is known from literature \cite{rawlings1993stability}, it has been modified for movement automaton $\mathscr{MA}$ as shown in this section.
+
